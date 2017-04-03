@@ -1,40 +1,267 @@
 <!DOCTYPE html>
-<html>
+<html xmlns:v-on="http://www.w3.org/1999/xhtml" xmlns:v-bind="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="UTF-8">
   <title>播音员</title>
+  <script src="./vue.js"></script>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div id="dir"></div>
+<div id="app" v-cloak>
+  <button v-on:click="add">添加</button>
+  <ul id="events-list" class="events-list">
+    <li v-for="(ev, index) in events">
+      <span class="content">{{ ev.content }}</span>
+      <div class="operation">
+        <button v-on:click="playSound(ev.soundFile)">播放</button>
+        <button v-on:click="edit(ev)">编辑</button>
+        <button v-on:click="remove(index)">删除</button>
+      </div>
+      <div class="loop">
+        <span v-if="ev.startDate">{{ev.startDate}}开始</span>
+        <span v-if="ev.endDate">{{ev.endDate}}结束</span>
+        <span v-if="ev.months">按月{{ev.months}}月</span>
+        <span v-if="ev.dates">按天{{ev.dates}}日</span>
+        <span v-if="ev.days">按星期{{ev.days}}</span>
+        <span v-if="ev.hours">按小时{{ev.hours}}点</span>
+        <span v-if="ev.minutes">按分{{ev.minutes}}分</span>
+      </div>
+    </li>
+  </ul>
+  <div id="new-event-form" class="new-event-form" v-if="adding || editing">
+    期限
+    <input type="checkbox" id="enabled-startDate" v-show="false" v-show="false" v-model="enabled.startDate">
+    <input class="new-event-start-date" type="date" v-model="newEvent.startDate" v-bind:disabled="!enabled.startDate">
+    至
+    <input type="checkbox" id="enabled-endDate" v-show="false" v-model="enabled.endDate">
+    <input class="new-event-end-date" type="date" v-model="newEvent.endDate" v-bind:disabled="!enabled.endDate">
+    <div class="new-event-selectors">
+      <div class="new-event-selector">
+        <label for="enabled-months">按月</label>
+        <input type="checkbox" id="enabled-months" v-show="false" v-model="enabled.months">
+        <br>
+        <select v-model="newEvent.months" v-bind:disabled="!enabled.months" class="new-event-selected" multiple>
+          <template v-for="n in 12">
+            <option v-bind:value="n">{{n}}月</option>
+          </template>
+        </select>
+      </div>
+      <div class="new-event-selector">
+        <label for="enabled-dates">按天</label>
+        <input type="checkbox" id="enabled-dates" v-show="false" v-model="enabled.dates">
+        <br>
+        <select v-model="newEvent.dates" v-bind:disabled="!enabled.dates" class="new-event-selected" multiple>
+          <template v-for="n in 31">
+            <option v-bind:value="n">{{n}}日</option>
+          </template>
+        </select>
+      </div>
+      <div class="new-event-selector">
+        <label for="enabled-days">按星期</label>
+        <input type="checkbox" id="enabled-days" v-show="false" v-model="enabled.days">
+        <br>
+      <select v-model="newEvent.days" v-bind:disabled="!enabled.days" class="new-event-selected" multiple>
+        <template v-for="(day, n) in ['一','二','三','四','五','六','天']">
+          <option v-bind:value="n+1">星期{{day}}</option>
+        </template>
+      </select>
+    </div>
+    <div class="new-event-selector">
+      <label for="enabled-hours">按小时</label>
+      <input type="checkbox" id="enabled-hours" v-show="false" v-model="enabled.hours">
+      <br>
+      <select v-model="newEvent.hours" v-bind:disabled="!enabled.hours" class="new-event-selected" multiple>
+        <template v-for="n in 24">
+          <option v-bind:value="n-1">{{n-1}}点</option>
+        </template>
+      </select>
+    </div>
+    <div class="new-event-selector">
+      <label for="enabled-minutes">按分钟</label>
+      <input type="checkbox" id="enabled-minutes" v-show="false" v-model="enabled.minutes">
+      <br>
+      <select v-model="newEvent.minutes" v-bind:disabled="!enabled.minutes" class="new-event-selected" multiple>
+        <template v-for="n in 30">
+          <option v-bind:value="n-1">{{n-1}}分</option>
+        </template>
+      </select>
+      <select v-model="newEvent.minutes2" v-bind:disabled="!enabled.minutes" class="new-event-selected" multiple>
+      <template v-for="n in 30">
+        <option v-bind:value="30+n-1">{{30+n-1}}分</option>
+      </template>
+    </select>
+    </div>
+  </div>
+  <textarea class="new-event-content" v-model="newEvent.content" placeholder="播音内容"></textarea>
+  <button v-on:click="save" v-bind:disabled="!newEvent.content.length">保存</button>
+  <button v-on:click="adding=false">关闭</button>
+</div>
+</div>
 </body>
 
 <script>
-    const electron = require('electron');
-    window.onload =  function () {
-//        var dir = document.getElementById('dir')
-//        var str, obj
-//        var fs = require('fs')
-//        var filename = __dirname + '/data1.json';
-//        if(fs.existsSync(filename)){
-//            dir.innerHTML = 'file exist<br>'
-//            str = fs.readFileSync(filename, 'utf8');
-//            obj = JSON.parse(str)
-//            dir.innerHTML += 'count: '+obj.count+'<br>'
-//            obj.count += 1
-//        }else{
-//            dir.innerHTML = 'file not exist<br>'
-//            obj = {
-//                count: 0
-//                , data: {
-//                    a: 1
-//                    , b: 2
-//                }
-//            }
-//        }
-//        dir.innerHTML += 'now count: '+obj.count + '<br>'
-//        str = JSON.stringify(obj)
-//        fs.writeFileSync(filename, str, 'utf8');
+    const fs = require('fs')
+    const request = require('request')
+    const dataFile = __dirname + '/data/data.json'
+
+    function getStoredEvents() {
+        if(fs.existsSync(dataFile)) {
+            var dataString = fs.readFileSync(dataFile, 'utf8')
+            if(dataString) {
+                var data = JSON.parse(dataString)
+                if(data){
+                    return data
+                }
+            }
+        }
+        return []
     }
+
+    function saveEvents(data) {
+        fs.writeFileSync(dataFile, JSON.stringify(data), 'utf8')
+    }
+
+    function downloadSound(text) {
+        return new Promise(function(resolve, reject) {
+            var uri = 'http://fanyi.baidu.com/gettts?lan=zh&text='+encodeURIComponent(text)+'&spd=5&source=web'
+            var soundFile = './data/' + (new Date().getTime()) + '.mp3'
+            var stream = fs.createWriteStream(soundFile)
+            request(uri).pipe(stream).on('close', function () {
+                if(fs.existsSync(soundFile)) {
+                    resolve(soundFile)
+                }else{
+                    reject('download fail')
+                }
+            })
+        })
+
+    }
+
+    var app = new Vue({
+        el: '#app'
+        , data: {
+            events: getStoredEvents()
+            , adding: false
+            , editing: false
+            , enabled: {
+                startDate: true
+                , endDate: true
+                , months: true
+                , dates: true
+                , days: true
+                , hours: true
+                , minutes: true
+            }
+            , newEvent: {
+                content: ''
+                , soundFile: ''
+                , startDate: ''
+                , endDate: ''
+                , months: []
+                , dates: []
+                , days: []
+                , hours: []
+                , minutes: []
+                , minutes2: []
+            }
+        }
+        , methods: {
+            add: function () {
+                this.adding = true
+            }
+            , save: function () {
+                if(this.newEvent.content){
+                    var that = this
+                    downloadSound(this.newEvent.content)
+                        .then(function (soundFile) {
+                            that.newEvent.soundFile = soundFile
+                            if(that.adding) {
+                                that.events.push(that.newEvent)
+                                that.adding = false
+                            }else{
+                                that.editing = false
+                            }
+                            that.newEvent = {
+                                content: ''
+                                , soundFile: ''
+                                , startDate: ''
+                                , endDate: ''
+                                , months: []
+                                , dates: []
+                                , days: []
+                                , hours: []
+                                , minutes: []
+                                , minutes2: []
+                            }
+                            saveEvents(that.events)
+                        })
+                }
+            }
+            , edit: function (ev) {
+                this.editing = true
+                this.newEvent = ev
+            }
+            , remove: function (index) {
+                var removedEvent = this.events.splice(index, 1)
+                fs.unlinkSync(removedEvent[0].soundFile)
+                saveEvents(this.events)
+            }
+            , playSound: function (soundFile) {
+                new Audio(soundFile).play()
+            }
+        }
+    })
+
+    function checkNow() {
+        var date = new Date()
+        for(index in app.events){
+            var ev = app.events[index]
+            if(ev.startDate){
+                var startDate = new Date(ev.startDate + ' 00:00:00')
+                if(startDate.getTime() > date.getTime()){
+                    return
+                }
+            }
+            if(ev.endDate){
+                var endDate = new Date(ev.endDate + ' 00:00:00')
+                if(endDate.getTime() < date.getDate()){
+                    return
+                }
+            }
+            if(ev.months){
+                if(ev.months.indexOf((date.getMonth()+1)+'') < 0){
+                    return
+                }
+            }
+            if(ev.dates){
+                if(ev.dates.indexOf((date.getDate())+'') < 0){
+                    return
+                }
+            }
+            if(ev.days){
+                if(ev.days.indexOf((date.getDay())+'') < 0){
+                    return
+                }
+            }
+            if(ev.hours){
+                if(ev.hours.indexOf((date.getHours())+'') < 0){
+                    return
+                }
+            }
+            if(ev.minutes || ev.minutes2){
+                if(ev.minutes.indexOf((date.getMinutes())+'') < 0 && ev.minutes2.indexOf((date.getMinutes())+'') < 0){
+                    return
+                }
+            }
+            app.playSound(ev.soundFile)
+        }
+    }
+
+    setInterval(function () {
+        checkNow()
+    }, 1000 * 60)
+
+    checkNow()
 </script>
 </body>
 </html>
