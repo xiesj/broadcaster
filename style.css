@@ -19,13 +19,13 @@ body{
     width: 609px;
     height: 40px;
 }
-.new-event-selected{
-    width: 100px;
-    height: 460px;
-}
 .new-event-selector{
     float: left;
     margin-right: 3px;
+}
+.new-event-selector select{
+    width: 100px;
+    height: 400px;
 }
 .events-list{
     margin: 0;
